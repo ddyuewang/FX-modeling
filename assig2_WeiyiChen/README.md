@@ -1,13 +1,16 @@
 # Running Guide
 
+  - Jump Step 4 if you have python3 installed.
+  - Jump to Step 3 if you have python2 installed but without python3 installed.
+  - Start from Step 1 if you do not have python installed.
+
 ### System Requirements
 Make sure your system meets these requirements:
   - Operating system: MacOS 10.7 10.8 10.9 10.10 (it has been tested successfully on these)
   - RAM: 2GB.
   - Disk space: 2GB
-  - Skip step 1 and step 2 if you have python installed
 
-### Step 1: Install Command Line Tools
+### Step 1: Install Command Line Tools 
   - Open terminal, type “xcode-select --install” in terminal (without quotes)
   - A pop-up windows will appear asking you about install tools, choose install tools, wait install to finish
   
@@ -30,7 +33,7 @@ Make sure your system meets these requirements:
   ```
 
 ### Step 4: Run the script
-
+/Users/weiyichen/FX_modeling/assig2_WeiyiChen/README.md
   ```
   python3 hedger_test.py
   ```
