@@ -14,26 +14,25 @@ Make sure your system meets these requirements:
   - Open terminal, type “xcode-select --install” in terminal (without quotes)
   - A pop-up windows will appear asking you about install tools, choose install tools, wait install to finish
   
-### Step 2: Install Homebrew
+### Step 2: Install Homebrew and Python
 
   ```
   ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
   brew tap samueljohn/python
   brew tap homebrew/science
+  brew install python
   ```
 
-### Step 3: Install Python, Python3 and its modules
+### Step 3: Install Python3 and related modules
     
   ```
-  brew install python
-  
   pip install python3
   pip3 install numpy
   pip3 install lazy
   ```
 
 ### Step 4: Run the script
-/Users/weiyichen/FX_modeling/assig2_WeiyiChen/README.md
+
   ```
   python3 hedger_test.py
   ```
