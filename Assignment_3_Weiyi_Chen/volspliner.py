@@ -22,8 +22,6 @@ class VolSpliner:
     
     def __init__(self):
         super(VolSpliner, self).__init__()
-                        
-        self.all_strikes, self.cs_params = self._fitted_spline(strikes,vols,texp,extrap_fact)
 
     # Market Inputs
 
@@ -32,7 +30,7 @@ class VolSpliner:
         return 1
 
     @lazy
-    def Atm(self):
+    def ATM(self):
         return .08
 
     @lazy
@@ -65,33 +63,65 @@ class VolSpliner:
         return None
 
     @lazy
+    def ATMStrike(self):
+        return self.Spot * exp(self.ATM**2 * self.Texp / 2.)
+
+    @lazy
+    def Strike25c(self):
+        return self.Spot * exp(self.Vol25c**2 * self.Texp / 2. - self.Vol25c * sqrt(self.Texp) * stats.norm.ppf(0.25))
+
+    @lazy
+    def Strike25p(self):
+        return self.Spot * exp(self.Vol25p**2 * self.Texp / 2. + self.Vol25p * sqrt(self.Texp) * stats.norm.ppf(0.25))
+
+    @lazy
+    def Strike10c(self):
+        return self.Spot * exp(self.Vol10c**2 * self.Texp / 2. - self.Vol10c * sqrt(self.Texp) * stats.norm.ppf(0.10))
+
+    @lazy
+    def Strike10p(self):
+        return self.Spot * exp(self.Vol10p**2 * self.Texp / 2. + self.Vol10p * sqrt(self.Texp) * stats.norm.ppf(0.10))
+
+    @lazy
     def Strikes(self):
         ''' list of five strikes (must be monotonically increasing) '''
-        atm_strike = self.Spot * exp(self.Atm**2 * self.Texp / 2.)
-        strike25c  = self.Spot * exp(self.Vol25c**2 * self.Texp / 2. - self.Vol25c * sqrt(self.Texp) * stats.norm.ppf(0.25))
-        strike25p  = self.Spot * exp(self.Vol25p**2 * self.Texp / 2. + self.Vol25p * sqrt(self.Texp) * stats.norm.ppf(0.25))
-        strike10c  = self.Spot * exp(self.Vol10c**2 * self.Texp / 2. - self.Vol10c * sqrt(self.Texp) * stats.norm.ppf(0.10))
-        strike10p  = self.Spot * exp(self.Vol10p**2 * self.Texp / 2. + self.Vol10p * sqrt(self.Texp) * stats.norm.ppf(0.10))
-        return [strike10p,strike25p,atm_strike,strike25c,strike10c]
+        return [self.Strike10p, self.Strike25p, self.ATMStrike, self.Strike25c, self.Strike10c]
+
+    @lazy
+    def Vol10p(self):
+        return self.ATM - self.Rr10 / 2. + self.Bf10
+
+    @lazy
+    def Vol25p(self):
+        return self.ATM - self.Rr25 / 2. + self.Bf25
+
+    @lazy
+    def Vol25c(self):
+        return self.ATM + self.Rr25 / 2. + self.Bf25
+
+    @lazy
+    def Vol10c(self):
+        return self.ATM + self.Rr10 / 2. + self.Bf10
 
     @lazy
     def Vols(self):
         ''' implied volatilities for the strikes '''
-        vol10p = self.Atm - self.Rr10 / 2. + self.Bf10
-        vol25p = self.Atm - self.Rr25 / 2. + self.Bf25
-        atm    = self.Atm
-        vol25c = self.Atm + self.Rr25 / 2. + self.Bf25
-        vol10c = self.Atm + self.Rr10 / 2. + self.Bf10
-        return [vol10p,vol25p,atm,vol25c,vol10c]
+        return [self.Vol10p, self.Vol25p, self.ATM, self.Vol25c, self.Vol10c]
 
     @lazy
-    def All_Strikes(self):
-        strike_min = self.Strikes[0] * exp(-self.Extrap_fact*self.Vols[0] * sqrt(self.Texp))
-        strike_max = self.Strikes[-1] * exp(self.Extrap_fact*self.vols[-1] * sqrt(self.Texp))
-        return [strike_min]+strikes+[strike_max]
+    def StrikeMin(self):
+        return self.Strikes[0] * exp(-self.Extrap_fact * self.Vols[0] * sqrt(self.Texp))
 
     @lazy
-    def _fitted_spline():
+    def StrikeMax(self):
+        return self.Strikes[-1] * exp(self.Extrap_fact * self.Vols[-1] * sqrt(self.Texp))
+
+    @lazy
+    def AllStrikes(self):
+        return [self.StrikeMin] + self.Strikes + [self.StrikeMax]
+
+    @lazy
+    def CSParams(self):
         '''Function that takes the input strikes, vols, time to expiration, and
         extrapolation factor and constructs the spline parameters'''
         
@@ -134,7 +164,7 @@ class VolSpliner:
         a = matrix(zeros((24,24)))
         b = matrix(zeros((24,1)))
         
-        xs  = self.All_strikes
+        xs  = self.AllStrikes
         x2s = [x*x for x in xs]
         x3s = [x*x*x for x in xs]
         
@@ -213,25 +243,25 @@ class VolSpliner:
         
         return cs_params
 
-    def volatility(self,strike):
+    def volatility(self, strike):
         '''Interpolates a volatility for the given strike'''
         
         # if it's asking for a vol for a strike outside the region
         # where vols are flat, use the edges
         
-        if strike<self.all_strikes[0]:
-            strike = self.all_strikes[0]
+        if strike < self.AllStrikes[0]:
+            strike = self.AllStrikes[0]
         
-        if strike>self.all_strikes[-1]:
-            strike = self.all_strikes[-1]
+        if strike > self.AllStrikes[-1]:
+            strike = self.AllStrikes[-1]
         
         # interpolate a vol from the spline
         
-        ind = bisect.bisect_left(self.strikes,strike)
+        ind = bisect.bisect_left(self.Strikes,strike)
         
-        a = self.cs_params[4*ind]
-        b = self.cs_params[4*ind+1]
-        c = self.cs_params[4*ind+2]
-        d = self.cs_params[4*ind+3]
+        a = self.CSParams[4*ind]
+        b = self.CSParams[4*ind+1]
+        c = self.CSParams[4*ind+2]
+        d = self.CSParams[4*ind+3]
         
-        return a+b*strike+c*strike*strike+d*strike*strike*strike
+        return a + b*strike + c*strike**2 + d*strike**3
