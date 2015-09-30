@@ -16,9 +16,8 @@ import scipy.stats as stats
 from lazy import lazy
 
 class VolSpliner:
-    '''Represents a cubic spline fit to five implied volatilities/strikes, with 
-    boundary conditions set such that vols flatten out a certain number of standard
-    deviations away from the outside strikes on either side'''
+    ''' A cubic spliner fit to five implied volatilities/strikes, with boundary conditions set such that vols flatten 
+    out a certain number of standard deviations away from the outside strikes on either side '''
     
     def __init__(self):
         super(VolSpliner, self).__init__()
@@ -122,132 +121,46 @@ class VolSpliner:
 
     @lazy
     def CSParams(self):
-        '''Function that takes the input strikes, vols, time to expiration, and
-        extrapolation factor and constructs the spline parameters'''
+        '''Construct the spline parameters'''
         
-        # there are six intervals for the spline where the function takes a cubic
-        # form, like
-        #
-        #    y_i(x) = A[i] + B[i] x + C[i] x^2 + D[i] x^3
-        #
-        # for i=0 through 5. x[0] == strike_min, and x[6] == strike_max.
-        #
-        # The goal is to solve for those 24 parameters. The constraints: first,
-        # that the volatilities match at the input points, for i=1->5:
-        #
-        #    y[i] = A[i] + B[i] x[i] + C[i] x[i]^2 + D[i] x[i]^3
-        #
-        # That gives us 5 equations of the 24 we need. Next, we know that the
-        # value, slope, and second derivative must match at the end of each interval
-        # for i=0 to 4, like
-        #
-        #    A[i] + B[i] x[i+1] + C[i] x[i+1]^2 + D[i] x[i+1]^3 = A[i+1] + B[i+1] x[i+1] + C[i+1] x[i+1]^2 + D[i+1] x[i+1]^3 
-        #    B[i] + 2 C[i] x[i+1] + 3 D[i] x[i+1]^2 = B[i+1] + 2 C[i+1] x[i+1] + 3 D[i+1] x[i+1]^2
-        #    2 C[i] + 6 D[i] x[i+1] = 2 C[i+1] + 6 D[i+1] x[i+1]
-        #
-        # That gives us an addition 3*5 = 15 equations, taking us to a total of 20
-        # equations so far for the 24 parameters. 
-        #
-        # The final set of equations is where our extrapolation comes in. We require
-        # that the slope and second derivative go to zero at x[0] and x[6], which are the
-        # points we added beyond the marked points, based on the extrapolation factor parameter:
-        #
-        #    B[0] + 2 C[0] x[0] + 3 D[0] x[0]^2 = 0
-        #    2 C[0] + 6 D[0] x[0] = 0
-        #    B[5] + 2 C[5] x[6] + 3 D[5] x[6]^2 = 0
-        #    2 C[5] + 6 D[5] x[6] = 0
-        #
-        # And that gives us an additional four equations, bring us to 24 equations for our
-        # 24 parameters. So we can construct a linear system representing those equations
-        # and invert it to solve for the parameter values.
-        
-        a = matrix(zeros((24,24)))
-        b = matrix(zeros((24,1)))
+        a, b = matrix(zeros((24,24))), matrix(zeros((24,1)))
         
         xs  = self.AllStrikes
-        x2s = [x*x for x in xs]
-        x3s = [x*x*x for x in xs]
-        
-        # first five rows correspond to the five equations relating function values to the input vols
+        x2s, x3s = [x**2 for x in xs], [x**3 for x in xs]
         
         for i in range(5):
-            a[i,4*(i+1)] = 1
-            a[i,4*(i+1)+1] = xs[i+1]
-            a[i,4*(i+1)+2] = x2s[i+1]
-            a[i,4*(i+1)+3] = x3s[i+1]
-            
+            # given points
+            a[i,4*(i+1)],   a[i,4*(i+1)+1],   a[i,4*(i+1)+2],   a[i,4*(i+1)+3]    =  1,  xs[i+1],  x2s[i+1],  x3s[i+1]
             b[i] = self.Vols[i]
-        
-        # next require the value to match at the end of each interval for interval=0->4
-        
-        for i in range(5):
-            a[i+5,4*i]       = 1
-            a[i+5,4*i+1]     = xs[i+1]
-            a[i+5,4*i+2]     = x2s[i+1]
-            a[i+5,4*i+3]     = x3s[i+1]
-            a[i+5,4*(i+1)]   = -1
-            a[i+5,4*(i+1)+1] = -xs[i+1]
-            a[i+5,4*(i+1)+2] = -x2s[i+1]
-            a[i+5,4*(i+1)+3] = -x3s[i+1]
-            
+
+            # original function edges
+            a[i+5,4*i],     a[i+5,4*i+1],     a[i+5,4*i+2],     a[i+5,4*i+3]      =  1,  xs[i+1],  x2s[i+1],  x3s[i+1]   
+            a[i+5,4*(i+1)], a[i+5,4*(i+1)+1], a[i+5,4*(i+1)+2], a[i+5,4*(i+1)+3]  = -1, -xs[i+1], -x2s[i+1], -x3s[i+1]
             b[i+5] = 0
-        
-        # next require the slopes to match
-        
-        for i in range(5):
-            a[i+10,4*i+1] = 1
-            a[i+10,4*i+2] = 2*xs[i+1]
-            a[i+10,4*i+3] = 3*x2s[i+1]
-            a[i+10,4*(i+1)+1] = -1
-            a[i+10,4*(i+1)+2] = -2*xs[i+1]
-            a[i+10,4*(i+1)+3] = -3*x2s[i+1]
             
+            # 1st derivative edges
+            a[i+10,4*i+1],     a[i+10,4*i+2],     a[i+10,4*i+3]     =  1,  2*xs[i+1],  3*x2s[i+1]
+            a[i+10,4*(i+1)+1], a[i+10,4*(i+1)+2], a[i+10,4*(i+1)+3] = -1, -2*xs[i+1], -3*x2s[i+1]
             b[i+10] = 0
-        
-        # next the 2nd derivs
-        
-        for i in range(5):
-            a[i+15,4*i+2] = 2
-            a[i+15,4*i+3] = 6*xs[i+1]
-            a[i+15,4*(i+1)+2] = -2
-            a[i+15,4*(i+1)+3] = -6*xs[i+1]
             
+            # 2nd derivative edges
+            a[i+15,4*i+2], a[i+15,4*i+3], a[i+15,4*(i+1)+2], a[i+15,4*(i+1)+3] = 2, 6*xs[i+1], -2, -6*xs[i+1]
             b[i+15] = 0
+
+        # 1st and 2nd derivatives go zero and other edge points
         
-        # then the final four equations forcing 1st and 2nd derivs to go
-        # to zero and the edge points we added in
-        
-        a[20,1] = 1
-        a[20,2] = 2*xs[0]
-        a[20,3] = 3*x2s[0]
-        b[20]   = 0
-        
-        a[21,2] = 2
-        a[21,3] = 6*xs[0]
-        b[21]   = 0
-        
-        a[22,21] = 1
-        a[22,22] = 2*xs[6]
-        a[22,23] = 3*x2s[6]
-        b[22]    = 0
-        
-        a[23,22] = 2
-        a[23,23] = 6*xs[6]
-        b[23]    = 0
-        
-        # then solve the equation
-        
+        a[20,1], a[20,2], a[20,3], b[20] = 1, 2*xs[0], 3*x2s[0], 0        
+        a[21,2], a[21,3], b[21] = 2, 6*xs[0], 0
+        a[22,21], a[22,22], a[22,23], b[22] = 1, 2*xs[6], 3*x2s[6], 0        
+        a[23,22], a[23,23], b[23] = 2, 6*xs[6], 0
+ 
+        # Solve
         sol = a.I*b
-        
         cs_params = [sol[i,0] for i in range(24)]
-        
         return cs_params
 
     def volatility(self, strike):
         '''Interpolates a volatility for the given strike'''
-        
-        # if it's asking for a vol for a strike outside the region
-        # where vols are flat, use the edges
         
         if strike < self.AllStrikes[0]:
             strike = self.AllStrikes[0]
